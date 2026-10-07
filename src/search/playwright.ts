@@ -22,42 +22,116 @@ export class PlaywrightSearchAdapter implements FlightSearchAdapter {
 
   async search(query: SearchQuery): Promise<RawFare[]> {
     const playwright = await loadPlaywright();
-    const browser = await playwright.chromium.launch({ headless: this.headless });
+    const browser = await playwright.chromium.launch({
+      headless: this.headless,
+      args: ["--disable-blink-features=AutomationControlled"],
+    });
     try {
-      const page = await browser.newPage({
+      const context = await browser.newContext({
         locale: "pt-BR",
-        extraHTTPHeaders: { "Accept-Language": "pt-BR,pt;q=0.9" },
+        userAgent:
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        extraHTTPHeaders: { "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
+        viewport: { width: 1280, height: 900 },
       });
+      const page = await context.newPage();
       const today = dayKey(new Date(), this.timezone);
-      const depart = addDays(today, 28);
-      const back = addDays(today, 35);
-      const url =
-        `https://www.google.com/travel/flights?hl=pt-BR&gl=BR&curr=BRL` +
-        `&q=${encodeURIComponent(`Voos de ${query.originCode} para qualquer lugar ${depart} ${back}`)}`;
 
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
-      await delay(4_000);
+      const depart = query.departFrom ?? addDays(today, 28);
+      const back = query.departTo && query.departTo !== query.departFrom
+        ? addDays(query.departFrom ?? depart, 7)
+        : query.departFrom
+          ? addDays(depart, 7)
+          : addDays(today, 35);
+
+      const destHint = query.destinationCodes?.[0];
+      const url = destHint
+        ? `https://www.google.com/travel/flights?hl=pt-BR&gl=BR&curr=BRL` +
+          `&q=${encodeURIComponent(`Voos de ${query.originCode} para ${destHint} ${depart} ${back}`)}`
+        : `https://www.google.com/travel/explore?hl=pt-BR&gl=BR&curr=BRL` +
+          `&q=${encodeURIComponent(`Voos baratos de ${query.originCode}`)}`;
+
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await delay(2_500);
       await dismissConsent(page);
+      await delay(5_000);
+      try {
+        await page.waitForLoadState("networkidle", { timeout: 15_000 });
+      } catch {
+        // fine
+      }
+      await delay(2_000);
 
-      const extracted = await page.evaluate(readFareCards);
+      const blocked = await page.evaluate(() => {
+        const doc = (globalThis as unknown as { document?: { body?: { innerText?: string } } }).document;
+        const text = doc?.body?.innerText?.toLowerCase() ?? "";
+        return (
+          text.includes("unusual traffic") ||
+          text.includes("não sou um robô") ||
+          text.includes("not a robot") ||
+          text.includes("captcha") ||
+          text.includes("enable javascript")
+        );
+      });
+      if (blocked) {
+        log.warn(`playwright ${query.originCode}: Google parece ter bloqueado / CAPTCHA`);
+        return [];
+      }
 
+      let extracted = await page.evaluate(readFareCards);
       log.info(`playwright ${query.originCode}: ${extracted.length} preços lidos`);
-      return extracted.map((row) => ({
-        originCode: query.originCode,
-        originCity: query.originCity,
-        destinationCode: slugCode(row.city),
-        destinationCity: row.city,
-        departDate: depart,
-        returnDate: back,
-        priceBRL: row.priceBRL,
-        airline: undefined,
-        stops: 0,
-        deepLink: url,
-      }));
+
+      if (extracted.length === 0 && !destHint) {
+        const fallback =
+          `https://www.google.com/travel/flights?hl=pt-BR&gl=BR&curr=BRL` +
+          `&q=${encodeURIComponent(`Voos de ${query.originCode} para qualquer lugar ${depart} ${back}`)}`;
+        await page.goto(fallback, { waitUntil: "domcontentloaded", timeout: 60_000 });
+        await delay(6_000);
+        await dismissConsent(page);
+        await delay(3_000);
+        extracted = await page.evaluate(readFareCards);
+        log.info(`playwright ${query.originCode} (flights fallback): ${extracted.length} preços lidos`);
+        return extracted.filter((row) => isRealCity(row.city)).map((row) => toFare(query, row, depart, back, fallback));
+      }
+
+      return extracted.filter((row) => isRealCity(row.city)).map((row) => toFare(query, row, depart, back, url));
     } finally {
       await browser.close();
     }
   }
+}
+
+function isRealCity(city: string): boolean {
+  const c = city.trim().toLowerCase();
+  if (c.length < 3 || c.length > 40) return false;
+  if (/sem escalas|escala|filtrar|ordenar|bagagem|direto|mapa|preço|google|entrar/.test(c)) return false;
+  if (/^\d/.test(c)) return false;
+  return true;
+}
+
+function toFare(
+  query: SearchQuery,
+  row: { city: string; priceBRL: number },
+  depart: string,
+  back: string,
+  baseUrl: string,
+): RawFare {
+  const destinationCode = slugCode(row.city);
+  const deepLink =
+    `https://www.google.com/travel/flights?hl=pt-BR&gl=BR&curr=BRL` +
+    `&q=${encodeURIComponent(`Voos de ${query.originCode} para ${row.city} ${depart} ${back}`)}`;
+  return {
+    originCode: query.originCode,
+    originCity: query.originCity,
+    destinationCode,
+    destinationCity: row.city,
+    departDate: depart,
+    returnDate: back,
+    priceBRL: row.priceBRL,
+    airline: undefined,
+    stops: 0,
+    deepLink: deepLink || baseUrl,
+  };
 }
 
 async function loadPlaywright(): Promise<PlaywrightModule> {
@@ -72,8 +146,9 @@ async function loadPlaywright(): Promise<PlaywrightModule> {
 
 async function dismissConsent(page: {
   getByRole: (role: "button", opts: { name: RegExp }) => { click: (opts: { timeout: number }) => Promise<void> };
+  locator: (sel: string) => { first: () => { click: (opts: { timeout: number }) => Promise<void> } };
 }): Promise<void> {
-  const labels = [/aceitar/i, /accept/i, /concordo/i];
+  const labels = [/aceitar tudo/i, /aceitar/i, /accept all/i, /accept/i, /concordo/i, /eu concordo/i];
   for (const name of labels) {
     try {
       await page.getByRole("button", { name }).click({ timeout: 1500 });
@@ -81,6 +156,11 @@ async function dismissConsent(page: {
     } catch {
       // cookie banner missing, fine
     }
+  }
+  try {
+    await page.locator('button:has-text("Aceitar tudo")').first().click({ timeout: 1500 });
+  } catch {
+    // ignore
   }
 }
 
@@ -95,21 +175,36 @@ function readFareCards(): { city: string; priceBRL: number }[] {
     .map((line) => line.trim())
     .filter(Boolean);
   const rows: { city: string; priceBRL: number }[] = [];
+  const skipCity = /^(de|para|ida|volta|filtrar|ordenar|melhor|mais barato|não-stop|direto|escalas|sem escalas|1 escala|2 escalas|bagagem|google|entrar|menu|mapa|preços|calendário|datas|passageiros|economia|executiva|primeira|classe|resultados|explorar)/i;
+
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     if (!line) continue;
-    const match = line.match(/R\$\s*([\d.]+)/);
+    // R$ 1.234 or R$1234 or R$ 1.234,00
+    const match = line.match(/R\$\s*([\d.]+)(?:,\d{2})?/);
     if (!match?.[1]) continue;
     const price = Number(match[1].replace(/\./g, ""));
     if (!price || price < 150 || price > 12_000) continue;
-    const previous = lines[i - 1] ?? "";
-    const city =
-      previous.length >= 3 && previous.length < 40 && !/R\$/.test(previous) ? previous : undefined;
+
+    let city: string | undefined;
+    for (let back = 1; back <= 3; back += 1) {
+      const previous = lines[i - back] ?? "";
+      if (
+        previous.length >= 3 &&
+        previous.length < 42 &&
+        !/R\$/.test(previous) &&
+        !/^\d/.test(previous) &&
+        !skipCity.test(previous)
+      ) {
+        city = previous.replace(/\s+\d+.*/, "").trim();
+        break;
+      }
+    }
     if (!city) continue;
     if (rows.some((row) => row.city === city && row.priceBRL === price)) continue;
     rows.push({ city, priceBRL: price });
   }
-  return rows.slice(0, 8);
+  return rows.slice(0, 10);
 }
 
 function slugCode(city: string): string {

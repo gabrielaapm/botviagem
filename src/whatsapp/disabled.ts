@@ -1,5 +1,11 @@
 import { log } from "../lib/log.ts";
-import type { WhatsAppGateway, WhatsAppGroup, WhatsAppStatus } from "./gateway.ts";
+import type {
+  InboundTextHandler,
+  WhatsAppGateway,
+  WhatsAppGroup,
+  WhatsAppGroupDetails,
+  WhatsAppStatus,
+} from "./gateway.ts";
 
 export class DisabledWhatsApp implements WhatsAppGateway {
   status(): WhatsAppStatus {
@@ -8,6 +14,7 @@ export class DisabledWhatsApp implements WhatsAppGateway {
       connected: false,
       qrPath: undefined,
       userName: undefined,
+      ownJid: undefined,
     };
   }
 
@@ -19,7 +26,15 @@ export class DisabledWhatsApp implements WhatsAppGateway {
     return [];
   }
 
-  async sendText(_groupJid: string, text: string): Promise<void> {
+  async getGroupDetails(_groupJid: string): Promise<WhatsAppGroupDetails | undefined> {
+    return undefined;
+  }
+
+  async sendText(_jid: string, text: string): Promise<void> {
     log.info("prévia da mensagem (WhatsApp desligado):\n" + text);
+  }
+
+  setInboundTextHandler(_handler: InboundTextHandler | undefined): void {
+    // no-op
   }
 }

@@ -1,61 +1,76 @@
-import { copy, ctaDestination } from "../copy/strings.ts";
-import { formatPtDate } from "../lib/clock.ts";
 import type { FlightOffer } from "./types.ts";
 
-const EMOJIS = ["✈️", "🌴", "🧳"] as const;
+const BEACH_CODES = new Set([
+  "SSA",
+  "FOR",
+  "NAT",
+  "MCZ",
+  "REC",
+  "FLN",
+  "MIA",
+  "CUN",
+  "PUJ",
+]);
 
-export function formatOfferMessage(offer: FlightOffer, brandName: string): string {
-  const dest = ctaDestination(offer.destination.city);
-  const price = formatBRL(offer.priceBRL);
-  const dates = `${formatPtDate(offer.departDate)} a ${formatPtDate(offer.returnDate)}`;
+export function formatOfferMessage(offer: FlightOffer, _brandName?: string): string {
+  const emoji = destinationEmoji(offer);
+  const dest = offer.destination.city
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase();
+  const price = `R$ ${Math.round(offer.priceBRL)}`;
+  const dates = formatDateArrow(offer.departDate, offer.returnDate);
   const route = `${offer.origin.code} ⇄ ${offer.destination.city}`;
-  const stopLine = offer.stops === 0 ? "voo direto" : `${offer.stops} parada(s)`;
-  const airline = offer.airline ? ` · ${offer.airline}` : "";
-  const emoji = EMOJIS[hashMod(offer.id, EMOJIS.length)] ?? "✈️";
-  const variant = hashMod(offer.id, 3);
+  const stops =
+    offer.stops === 0 ? "⚡ Direto" : `⚡ ${offer.stops} parada${offer.stops === 1 ? "" : "s"}`;
 
-  const body =
-    variant === 0
-      ? [
-          `${emoji} ${offer.destination.city} saindo de ${offer.origin.city}`,
-          route,
-          `ida e volta · ${dates}`,
-          price,
-          `${stopLine}${airline}`,
-        ]
-      : variant === 1
-        ? [
-            `${emoji} ${price} · ${offer.destination.city}`,
-            `${route}, ida e volta ${dates}`,
-            `${stopLine}${airline}`,
-          ]
-        : [
-            `${emoji} achado: ${route}`,
-            `ida e volta ${dates}`,
-            price,
-            `${stopLine}${airline}`,
-          ];
+  const lines = [
+    `${emoji} ${dest} | ${price}`,
+    "",
+    `📅 ${dates}`,
+    `✈️ ${route}`,
+    stops,
+  ];
 
-  return [
-    ...body,
+  if (offer.outbound?.departTime && offer.outbound?.arriveTime) {
+    lines.push(`🕐 ${offer.outbound.departTime} → ${offer.outbound.arriveTime}`);
+  }
+  if (offer.returnLeg?.departTime && offer.returnLeg?.arriveTime) {
+    lines.push(`🕐 ${offer.returnLeg.departTime} → ${offer.returnLeg.arriveTime}`);
+  }
+
+  lines.push(
     "",
-    `QUERO ${dest}`,
+    "💬 Quer fechar? Me chama no PV.",
     "",
-    copy.disclaimer,
-    brandName,
-  ].join("\n");
+    "Valor sujeito a alteração até a emissão. Bagagem e assento conforme tarifa.",
+  );
+
+  return lines.join("\n");
 }
 
 export function formatBRL(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return `R$ ${Math.round(value)}`;
 }
 
-function hashMod(value: string, mod: number): number {
-  let acc = 0;
-  for (const char of value) acc = (acc + char.charCodeAt(0)) % 997;
-  return acc % mod;
+function destinationEmoji(offer: FlightOffer): string {
+  if (BEACH_CODES.has(offer.destination.code)) return "🌴";
+  return "✈️";
+}
+
+/** Same month: 11 → 16/11. Cross month: 28/10 → 05/11. */
+export function formatDateArrow(departDate: string, returnDate: string): string {
+  const [dy, dm, dd] = departDate.split("-");
+  const [ry, rm, rd] = returnDate.split("-");
+  if (!dy || !dm || !dd || !ry || !rm || !rd) {
+    return `${departDate} → ${returnDate}`;
+  }
+  const dDay = String(Number(dd));
+  const rDay = String(Number(rd));
+  const rMonth = String(Number(rm));
+  const dMonth = String(Number(dm));
+  if (dy === ry && dm === rm) {
+    return `${dDay} → ${rDay}/${rMonth}`;
+  }
+  return `${dDay}/${dMonth} → ${rDay}/${rMonth}`;
 }

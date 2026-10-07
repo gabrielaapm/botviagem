@@ -44,6 +44,20 @@ async function handle(ctx: WebContext, req: IncomingMessage, res: ServerResponse
       json(res, 200, await buildState(ctx));
       return;
     }
+    if (req.method === "GET" && url.pathname === "/api/group-details") {
+      const jid = url.searchParams.get("jid") || ctx.settings.groupJid || ctx.config.whatsappGroupJid || "";
+      if (!jid) {
+        json(res, 400, { message: copy.errors.noGroup });
+        return;
+      }
+      const details = await ctx.whatsapp.getGroupDetails(jid);
+      json(res, 200, {
+        ownJid: ctx.whatsapp.status().ownJid,
+        adminConfigured: ctx.config.whatsappAdminJid ?? null,
+        details: details ?? null,
+      });
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/search-now") {
       const queued = await ctx.pipeline.run();
       json(res, 200, { queued: queued.length });
@@ -88,7 +102,9 @@ async function buildState(ctx: WebContext) {
       connected: wa.connected,
       qrReady: Boolean(wa.qrPath),
       userName: wa.userName,
+      ownJid: wa.ownJid,
     },
+    adminJid: ctx.config.whatsappAdminJid ?? "",
     groupJid: ctx.settings.groupJid ?? ctx.config.whatsappGroupJid ?? "",
     groupName: ctx.settings.groupName ?? "",
     groups,

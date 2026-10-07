@@ -5,12 +5,14 @@ import { dayKey } from "../lib/clock.ts";
 import { log } from "../lib/log.ts";
 import type { WhatsAppGateway } from "../whatsapp/gateway.ts";
 import { checkDailyLimit } from "../whatsapp/rate-limit.ts";
+import { resolveAdminJid } from "../whatsapp/resolve-admin.ts";
+import { ensureDeepLink, formatAdminDm } from "./deeplink.ts";
 import type { OfferStore } from "./store.ts";
 import { formatOfferMessage } from "./template.ts";
 import type { StoredOffer } from "./types.ts";
 
 export type PublishOutcome =
-  | { ok: true; offer: StoredOffer; preview: string; sent: boolean }
+  | { ok: true; offer: StoredOffer; preview: string; sent: boolean; adminDm?: string; adminJid?: string }
   | { ok: false; reason: "missing" | "rate-limit" | "no-group" | "send-failed"; message: string };
 
 export class Publisher {
@@ -48,7 +50,8 @@ export class Publisher {
       };
     }
 
-    const preview = this.preview(offer);
+    const withLink = ensureDeepLink(offer);
+    const preview = this.preview(withLink);
     const groupJid = this.settings.groupJid ?? this.config.whatsappGroupJid;
     const wa = this.whatsapp.status();
 
@@ -62,12 +65,36 @@ export class Publisher {
       } else {
         await this.whatsapp.sendText("preview", preview);
       }
+
+      let adminDm: string | undefined;
+      let adminJid: string | undefined;
+      if (wa.enabled && groupJid) {
+        adminJid = await resolveAdminJid({
+          config: this.config,
+          whatsapp: this.whatsapp,
+          groupJid,
+        });
+        if (adminJid) {
+          adminDm = formatAdminDm(withLink);
+          await this.whatsapp.sendText(adminJid, adminDm);
+          log.info(`link Google Flights enviado no PV do adm (${adminJid})`);
+        }
+      }
+
+      // persist deepLink on stored offer if we filled it
+      if (!offer.deepLink && withLink.deepLink) {
+        offer.deepLink = withLink.deepLink;
+      }
+
       const posted = await this.store.markPosted(id);
       if (!posted) {
         return { ok: false, reason: "missing", message: copy.errors.notFound };
       }
       log.info(`oferta ${id} aprovada (${wa.enabled ? "enviada" : "prévia"})`);
-      return { ok: true, offer: posted, preview, sent: wa.enabled };
+      const result: PublishOutcome = { ok: true, offer: posted, preview, sent: wa.enabled };
+      if (adminDm) result.adminDm = adminDm;
+      if (adminJid) result.adminJid = adminJid;
+      return result;
     } catch (err) {
       await this.store.markFailed(id, String(err));
       await this.store.restorePending(id);

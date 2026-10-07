@@ -43,7 +43,7 @@ export class OfferPipeline {
 
     const offers: FlightOffer[] = scored.map(({ fare, promoScore }) => {
       const fingerprint = fareFingerprint(fare);
-      return {
+      const offer: FlightOffer = {
         id: offerId(fingerprint, foundAt),
         fingerprint,
         origin: { code: fare.originCode, city: fare.originCity },
@@ -58,6 +58,9 @@ export class OfferPipeline {
         deepLink: fare.deepLink,
         promoScore,
       };
+      if (fare.outbound) offer.outbound = fare.outbound;
+      if (fare.returnLeg) offer.returnLeg = fare.returnLeg;
+      return offer;
     });
 
     const queued = await this.store.enqueue(offers);

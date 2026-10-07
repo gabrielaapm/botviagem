@@ -11,6 +11,12 @@ export type AirportRef = {
   city: string;
 };
 
+/** Optional flight clock times as HH:MM (local). Omit when unknown. */
+export type FlightLegTimes = {
+  departTime: string;
+  arriveTime: string;
+};
+
 export type FlightOffer = {
   id: string;
   fingerprint: string;
@@ -25,6 +31,8 @@ export type FlightOffer = {
   foundAt: string;
   deepLink: string | undefined;
   promoScore: number;
+  outbound?: FlightLegTimes;
+  returnLeg?: FlightLegTimes;
 };
 
 export type StoredOffer = FlightOffer & {
@@ -46,4 +54,6 @@ export type RawFare = {
   airline: string | undefined;
   stops: number;
   deepLink: string | undefined;
+  outbound?: FlightLegTimes;
+  returnLeg?: FlightLegTimes;
 };
