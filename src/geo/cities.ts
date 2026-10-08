@@ -13,6 +13,8 @@ const CITIES: { aliases: string[]; city: string; codes: string[] }[] = [
   { aliases: ["santos dumont"], city: "Rio de Janeiro", codes: ["SDU"] },
   { aliases: ["natal", "nat"], city: "Natal", codes: ["NAT"] },
   { aliases: ["recife", "rec"], city: "Recife", codes: ["REC"] },
+  { aliases: ["joao pessoa", "jpa"], city: "João Pessoa", codes: ["JPA"] },
+  { aliases: ["sao luis", "slz"], city: "São Luís", codes: ["SLZ"] },
   { aliases: ["salvador", "ssa", "bahia"], city: "Salvador", codes: ["SSA"] },
   { aliases: ["fortaleza", "for"], city: "Fortaleza", codes: ["FOR"] },
   { aliases: ["maceio", "mcz"], city: "Maceió", codes: ["MCZ"] },

@@ -1,6 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
-import { ORIGIN_AIRPORTS } from "./origins.ts";
+import { DEFAULT_ORIGIN_CODES } from "./origins.ts";
 
 export type SearchAdapterName = "mock" | "playwright" | "api";
 
@@ -62,7 +62,7 @@ function parseOrigins(raw: string): string[] {
     .split(",")
     .map((item) => item.trim().toUpperCase())
     .filter(Boolean);
-  return codes.length > 0 ? codes : ORIGIN_AIRPORTS.map((item) => item.code);
+  return codes.length > 0 ? codes : [...DEFAULT_ORIGIN_CODES];
 }
 
 function parseAdapter(raw: string): SearchAdapterName {
@@ -84,7 +84,7 @@ export function loadConfig(argv = process.argv.slice(2)): Config {
     timezone: read("TZ", "America/Sao_Paulo"),
     checkHours: parseHours(read("CHECK_HOURS", "3,9,14,19")),
     maxPostsPerDay: readInt("MAX_POSTS_PER_DAY", 6),
-    origins: parseOrigins(read("ORIGINS", "GRU,CGH,GIG,SDU,REC,VCP")),
+    origins: parseOrigins(read("ORIGINS", DEFAULT_ORIGIN_CODES.join(","))),
     brandName: read("BRAND_NAME", "[Sua Agência]"),
     searchAdapter,
     flightApiUrl,

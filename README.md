@@ -2,7 +2,18 @@
 
 Bot semi-automático de passagem barata para agência de turismo. Roda no **PC da agência**, busca tarifa no Google Flights (ou mock/API), espera alguém aprovar e só então manda no grupo de WhatsApp.
 
-Origens padrão: São Paulo (GRU/CGH), Rio (GIG/SDU), Recife (REC) e Campinas (VCP). Quatro buscas por dia no horário de Brasília: 03:00, 09:00, 14:00 e 19:00.
+Origens padrão: São Paulo (GRU/CGH), Rio (GIG/SDU), Recife (REC), Natal (NAT), João Pessoa (JPA) e São Luís (SLZ). Quatro buscas por dia no horário de Brasília: 03:00, 09:00, 14:00 e 19:00.
+
+Cada rodada busca **2 aeroportos**, um de cada vez (um Chromium por vez), e as 4 rodadas cobrem os 8:
+
+| Rodada | Origens |
+| --- | --- |
+| 03:00 | GRU, CGH (São Paulo) |
+| 09:00 | GIG, SDU (Rio) |
+| 14:00 | REC, NAT (Recife, Natal) |
+| 19:00 | JPA, SLZ (João Pessoa, São Luís) |
+
+Se você mudar `ORIGINS` ou `CHECK_HOURS`, a lista é dividida em blocos seguidos, na ordem do `.env`, entre as rodadas. A primeira busca ao subir o bot (`npm start`) roda todas as origens.
 
 ## Aviso sobre WhatsApp e banimento
 

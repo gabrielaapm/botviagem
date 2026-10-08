@@ -66,3 +66,9 @@ test("grupo só aceita comando começando com bot", () => {
   assert.equal(startsWithBotCommand("Bot voo barato"), true);
   assert.equal(startsWithBotCommand("qual voo mais barato"), false);
 });
+
+test("novas origens: João Pessoa e São Luís", () => {
+  assert.deepEqual(resolveCity("João Pessoa")?.codes, ["JPA"]);
+  assert.deepEqual(resolveCity("sao luis")?.codes, ["SLZ"]);
+  assert.deepEqual(resolveCity("Natal")?.codes, ["NAT"]);
+});

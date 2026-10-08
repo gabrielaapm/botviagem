@@ -27,6 +27,8 @@ const CATALOG: readonly CatalogRow[] = [
   { code: "GIG", city: "Rio de Janeiro", base: 320 },
   { code: "SDU", city: "Rio de Janeiro", base: 280 },
   { code: "VCP", city: "Campinas", base: 305 },
+  { code: "JPA", city: "João Pessoa", base: 372 },
+  { code: "SLZ", city: "São Luís", base: 398 },
   { code: "CNF", city: "Belo Horizonte", base: 340 },
   { code: "EZE", city: "Buenos Aires", base: 890, international: true },
   { code: "SCL", city: "Santiago", base: 1120, international: true },
